@@ -5,21 +5,64 @@ import { usersTable } from "@/config/schema";
 import { eq } from "drizzle-orm";
 
 export async function POST() {
-    const user = await currentUser();
+    try {
+        const user = await currentUser();
 
-    // if user already exists in DB
-    const users = await db.select().from(usersTable).where(eq(usersTable.email, user?.primaryEmailAddress?.emailAddress as string));
+        // Early authentication check - return 401 if not authenticated
+        if (!user) {
+            return NextResponse.json(
+                { error: "User not authenticated" },
+                { status: 401 }
+            );
+        }
 
-    // if not create a new user in DB
-    if(users?.length === 0)
-    {
-        const newUser = await db.insert(usersTable).values({
-            email: user?.primaryEmailAddress?.emailAddress as string,
-            name: user?.fullName as string,
-        }).returning();
+        // Extract and validate email
+        const email = user.emailAddresses?.[0]?.emailAddress;
+        if (!email) {
+            return NextResponse.json(
+                { error: "User email not found" },
+                { status: 400 }
+            );
+        }
 
-        return NextResponse.json(newUser[0]);
+        // Extract and validate name with fallback
+        const name = user.fullName || `${user.firstName || ""} ${user.lastName || ""}`.trim() || "User";
+
+        // Atomic upsert: insert or do nothing if email already exists
+        const upsertResult = await db
+            .insert(usersTable)
+            .values({
+                email: email,
+                name: name,
+            })
+            .onConflictDoNothing()
+            .returning();
+
+        // If insert succeeded, return the new user
+        if (upsertResult.length > 0) {
+            return NextResponse.json(upsertResult[0]);
+        }
+
+        // If insert returned no rows (user already exists), fetch and return existing user
+        const existingUser = await db
+            .select()
+            .from(usersTable)
+            .where(eq(usersTable.email, email));
+
+        if (existingUser.length > 0) {
+            return NextResponse.json(existingUser[0]);
+        }
+
+        // Fallback (should not reach here if constraint is properly set)
+        return NextResponse.json(
+            { error: "Failed to upsert user" },
+            { status: 500 }
+        );
+    } catch (error) {
+        console.error("Error in POST /api/user:", error);
+        return NextResponse.json(
+            { error: "Internal server error" },
+            { status: 500 }
+        );
     }
-
-    return NextResponse.json(users[0]);
 }
