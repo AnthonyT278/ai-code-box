@@ -20,6 +20,7 @@ import { use, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { SignInButton, useUser } from "@clerk/nextjs"
+import { useRouter } from "next/dist/client/components/navigation"
 
 
 
@@ -29,6 +30,7 @@ function Hero() {
   const [type, setType] = useState('full-courses');
   const [loading, setLoading] = useState(false);
   const { user } = useUser();
+  const router = useRouter();
 
   const GenerateCourseLayout = async () => {
     const toastId =toast.loading("Generating course layout...");
@@ -45,6 +47,8 @@ function Hero() {
        toast.success("Course layout generated successfully!", { id: toastId });
 
         // navigate to course editor page 
+        router.push('course/'+courseId);
+
 
        }catch(error){
         setLoading(false);
